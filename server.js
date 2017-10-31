@@ -3,7 +3,34 @@ var express = require('express');
 var app = express();
 var mysql = require('mysql');
 var bodyParser = require('body-parser');
-cors = require('cors');
+var cors = require('cors');
+
+var jwt = require('jsonwebtoken');
+var passport = require("passport");
+var passportJWT = require("passport-jwt");
+
+var ExtractJwt = passportJWT.ExtractJwt;
+var JwtStrategy = passportJWT.Strategy;
+
+var jwtOptions = {};
+jwtOptions.jwtFromRequest = ExtractJwt.fromAuthHeaderAsBearerToken();
+jwtOptions.secretOrKey = 'testwimtachnode';
+
+var strategy = new JwtStrategy(jwtOptions, function (jwt_payload, next) {
+        console.log('payload received', jwt_payload);
+
+        // usually this would be a database call:
+        // var user = users[_.findIndex(users, { id: jwt_payload.id })];
+
+        // usually check the user instead of the playload.id
+        if (jwt_payload.id) {
+                next(null, jwt_payload.id);
+        } else {
+                next(null, false);
+        }
+});
+
+passport.use(strategy);
 
 /*var connection = mysql.createConnection({
         host     : 'jun.cnpvqqpsoao7.us-west-2.rds.amazonaws.com',
@@ -17,7 +44,7 @@ var connection = mysql.createConnection({
         user: 'javierkatz',
         password: 'ja812446',
         database: 'tree',
-}); 
+});
 
 // var connection = mysql.createConnection({
 //         host: 'fortekdb.coi8gct3gevf.us-east-2.rds.amazonaws.com',
@@ -27,42 +54,54 @@ var connection = mysql.createConnection({
 // });
 
 
-var port = process.env.PORT || 5000;
+var port = process.env.PORT || 5001;
 
-
+app.use(passport.initialize());
 app.use(bodyParser.urlencoded({ extended: true }));
-
 app.use(bodyParser.json());
+
+app.use(function (req, res, next) {
+        res.header("Access-Control-Allow-Origin", "*");
+        res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+        next();
+});
+
 /*app.configure(function()
 {
         app.use(express.bodyParser());
         app.use(app.router);
 });*/
 
-// app.use(function (req, res, next) {
-//         res.header('Access-Control-Allow-Origin', "*");
-//         res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE');
-//         res.header('Access-Control-Allow-Headers', 'Content-Type'); next();
-// });
-
-var allowCrossDomain = function(req, res, next) {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE');
-    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Cache-Control");
-
-    // intercept OPTIONS method
-    if ('OPTIONS' == req.method) {
-      res.send(200);
-    }
-    else {
-      next();
-    }
-};
-
-app.use(allowCrossDomain);
-
 // routes will go here
-app.get('/api/department', cors(), function (req, res) {
+
+var setSecureRoute = passport.authenticate('jwt', { session: false });
+
+app.get("/login", function (req, res) {
+        console.log(req.query);
+        var username = req.query.username;
+        var password = req.query.password;
+
+        // usually this would be a database call:
+        //var user = users[_.findIndex(users, { name: name })];
+        if (username === "1" && password === "1") {
+                var payload = { id: "101" };
+                var token = jwt.sign(payload, jwtOptions.secretOrKey, { expiresIn: '1d' });
+                res.json({ message: "ok", token: token });
+        }
+        else {
+                res.status(401).json({ message: "passwords did not match" });
+        }
+});
+
+app.get("/secret", setSecureRoute, function (req, res) {
+        res.json({
+                message: "Success! You can not see this without a token",
+                user: req.user
+        });
+});
+
+
+app.get('/api/department', function (req, res) {
 
         connection.query('SELECT * FROM Departments ', function (err, rows, fields) {
                 console.log('Connection result error ' + err);
@@ -74,12 +113,9 @@ app.get('/api/department', cors(), function (req, res) {
                 res.end(JSON.stringify(rows));
                 res.end();
         });
-
-
-
 });
 
-app.get('/api/position', cors(), function (req, res) {
+app.get('/api/position', function (req, res) {
 
         connection.query('SELECT Position_Id,Position_Name FROM Positions ', function (err, rows, fields) {
                 console.log('Connection result error ' + err);
@@ -96,7 +132,7 @@ app.get('/api/position', cors(), function (req, res) {
 
 });
 
-app.get('/api/user', cors(), function (req, res) {
+app.get('/api/user', function (req, res) {
 
         connection.query('SELECT id_user,name,email FROM users ', function (err, rows, fields) {
                 console.log('Connection result error ' + err);
@@ -115,7 +151,7 @@ app.get('/api/user', cors(), function (req, res) {
 
 
 // routes will go here
-app.get('/api/login', cors(), function (req, res) {
+app.get('/api/login', function (req, res) {
         var user_id = req.param('user_id');
         var results;
         connection.query('SELECT user_id, name FROM t_user WHERE user_id IN (?)', [user_id], function (err, rows, fields) {
@@ -133,7 +169,7 @@ app.get('/api/login', cors(), function (req, res) {
 
 });
 
-app.post('/api/search', cors(), function (req, res) {
+app.post('/api/search', function (req, res) {
         // var dte = req.param('dte');
 
         console.log(req.body);
@@ -157,7 +193,7 @@ app.post('/api/search', cors(), function (req, res) {
 
 });
 
-app.get('/api/orgtree', cors(), function (req, res) {
+app.get('/api/orgtree', function (req, res) {
         var deptid = req.param('deptid');
 
         connection.query('select Organization.Org_Name,users.Org_Id,Departments.Dept_Id,users.id_user,users.name,users.lastname,Positions.Position_Id,Positions.position_Name,Departments.Department_Name from users LEFT JOIN Positions on users.position_id = Positions.position_id Left Join Departments on users.dept_id=Departments.Dept_Id left join Organization on users.Org_Id=Organization.Org_Id', function (err, rows, fields) {
@@ -252,7 +288,7 @@ function getIndexOf(arrayObj, paramterName, valueToCompare) {
 }
 
 
-app.get('/api/superuser', cors(), function (req, res) {
+app.get('/api/superuser', function (req, res) {
         var deptid = req.param('deptid');
 
         connection.query('select Organization.Org_Name,users.Org_Id,Departments.Dept_Id,users.id_user,users.name,users.lastname,Positions.Position_Id,Positions.position_Name,Departments.Department_Name from users LEFT JOIN Positions on users.position_id = Positions.position_id Left Join Departments on users.dept_id=Departments.Dept_Id left join Organization on users.Org_Id=Organization.Org_Id', function (err, rows, fields) {
@@ -347,7 +383,7 @@ function getIndexOf1(arrayObj, paramterName, valueToCompare) {
 }
 
 
-app.post('/api/operator1', cors(), function (req, res) {
+app.post('/api/operator1', function (req, res) {
 
         var op_id = req.body.op_id;
         var op_name = req.body.op_name;
@@ -398,7 +434,7 @@ app.post('/api/operator1', cors(), function (req, res) {
 
 });
 
-app.post('/api/editoperator1', cors(), function (req, res) {
+app.post('/api/editoperator1', function (req, res) {
 
 
 
@@ -716,7 +752,7 @@ app.post('/api/opauthpass', function (req, res) {
                         res.sendStatus(200);
                 }
         });
-        
+
 });
 
 app.post('/api/lockeypadsec', function (req, res) {
@@ -837,7 +873,7 @@ app.post('/api/register1', function (req, res) {
                 email_id: req.body.txtorgemail,
                 password1: req.body.txtorgpassword2
         };
-        
+
         connection.query("INSERT INTO masterlogin11 set ? ", data, function (err, rows) {
                 if (err) {
                         console.log(err);
@@ -865,27 +901,27 @@ app.post('/api/login1', function (req, res) {
 
 
         console.log(req.body);
-         var email_id = req.body.txtorgemail;
-         var password1 = req.body.txtorgpassword2;
-      
-// console.log('no of records is ' + email_id);
-// console.log('no of records is ' + password1);        
-//         connection.query('select org_name,orgcategory_name,email_id from masterlogin11 where email_id in (?) and password1 in(?) ',[email_id,password1], function (err, rows, fields) {
-                
-//                 console.log('no of records is ' + email_id);
-// console.log('no of records is ' + password1); 
+        var email_id = req.body.txtorgemail;
+        var password1 = req.body.txtorgpassword2;
 
-//                 console.log('Connection result error ' + err);
-//                 console.log('no of records is ' + rows);
-//                 console.log('no of records is ' + rows.length);
-//                 console.log('no of records is ' + fields.length);
-//                 //console.log('no of records is '+fields.length);
+        // console.log('no of records is ' + email_id);
+        // console.log('no of records is ' + password1);        
+        //         connection.query('select org_name,orgcategory_name,email_id from masterlogin11 where email_id in (?) and password1 in(?) ',[email_id,password1], function (err, rows, fields) {
 
-//                 res.writeHead(200, { 'Content-Type': 'application/json' });
+        //                 console.log('no of records is ' + email_id);
+        // console.log('no of records is ' + password1); 
 
-//                 res.end(JSON.stringify(rows));
-//                 res.end();
-//         });
+        //                 console.log('Connection result error ' + err);
+        //                 console.log('no of records is ' + rows);
+        //                 console.log('no of records is ' + rows.length);
+        //                 console.log('no of records is ' + fields.length);
+        //                 //console.log('no of records is '+fields.length);
+
+        //                 res.writeHead(200, { 'Content-Type': 'application/json' });
+
+        //                 res.end(JSON.stringify(rows));
+        //                 res.end();
+        //         });
 
 
 
@@ -893,16 +929,16 @@ app.post('/api/login1', function (req, res) {
 app.post('/api/login2', function (req, res) {
 
         //var id_user = req.body.id_user;
-         var email_id = req.body.txtorgemail;
-         var password1 = req.body.txtorgpassword2;
+        var email_id = req.body.txtorgemail;
+        var password1 = req.body.txtorgpassword2;
 
-console.log(req.body);
+        console.log(req.body);
 
-        connection.query('update masterlogin11 set token=md5(concat(?, now())) where email_id=?',[email_id,email_id], function (err, rows) {
-                
+        connection.query('update masterlogin11 set token=md5(concat(?, now())) where email_id=?', [email_id, email_id], function (err, rows) {
+
         });
 
-        connection.query('select org_id,org_name,orgcategory_name,email_id,token from masterlogin11 where email_id=? and password1=?',[email_id,password1], function (err, rows) {
+        connection.query('select org_id,org_name,orgcategory_name,email_id,token from masterlogin11 where email_id=? and password1=?', [email_id, password1], function (err, rows) {
                 // console.log(sql);
 
                 if (err) {
@@ -913,7 +949,7 @@ console.log(req.body);
                         res.writeHead(200, { 'Content-Type': 'application/json' });
 
                         res.end(JSON.stringify(rows));
-                        
+
                         console.log("Success!!!");
                         res.end();
                 }
@@ -926,7 +962,7 @@ console.log(req.body);
 
 
 app.get('/', function (req, res) {
-        res.sendStatus('Front End APIs ');
+        res.send('Front End APIs ');
 });
 
 // start the server

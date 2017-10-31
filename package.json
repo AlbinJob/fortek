@@ -2,11 +2,15 @@
   "name": "express-parameters",
   "main": "server.js",
   "dependencies": {
+    "aws-iot-device-sdk": "^2.0.0",
     "body-parser": "^1.17.2",
+    "cors": "^2.8.4",
     "express": "~4.10.2",
     "http": "^0.0.0",
+    "jsonwebtoken": "^8.1.0",
     "mysql": "^2.13.0",
-    "aws-iot-device-sdk": "^2.0.0"
+    "passport": "^0.4.0",
+    "passport-jwt": "^3.0.1"
   },
   "scripts": {
     "start": "node server.js"
